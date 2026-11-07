@@ -1,0 +1,14 @@
+/target
+nut.step
+
+# Generated or downloaded for the web page
+/web/app
+/web/pkg
+
+# Editor and assistant files
+.claude/
+CLAUDE.md
+.superpowers/
+.vscode/
+.idea/
+*.lic

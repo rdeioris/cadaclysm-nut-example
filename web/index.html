@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cadaclysm nut</title>
+<style>
+    html, body { margin: 0; height: 100%; font: 14px/1.4 system-ui, sans-serif; background: #15171a; color: #e6e6e6; }
+    body { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+    #status { padding: 8px 12px; color: #9aa0a6; }
+    canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+</style>
+</head>
+<body>
+<div id="status">loading…</div>
+<canvas id="nut"></canvas>
+<script type="module">
+// app/ is this crate built by wasm-bindgen, pkg/ the cadaclysm web package.
+import init, { page_main } from "./app/nut.js";
+await init();
+try { page_main(); } catch (e) { document.getElementById("status").textContent = e.message ?? e; }
+</script>
+</body>
+</html>

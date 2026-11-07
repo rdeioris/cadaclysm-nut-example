@@ -1,0 +1,28 @@
+[package]
+name = "nut"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "A hex nut built with cadaclysm, shown in a desktop window and in a web page from the same Rust code."
+
+[lib]
+# rlib for the desktop program in src/main.rs, cdylib for the browser.
+crate-type = ["cdylib", "rlib"]
+
+# The desktop program. Named apart from the library so their build files don't collide.
+[[bin]]
+name = "desktop"
+path = "src/main.rs"
+
+[dependencies]
+cadaclysm-sdk = "0.13.1"
+
+# Only the browser build needs these.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.100"
+wasm-bindgen-futures = "0.4.50"
+web-sys = { version = "0.3.77", features = ["Document", "Element", "HtmlCanvasElement", "Window"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
