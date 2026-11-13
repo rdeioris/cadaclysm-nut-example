@@ -24,8 +24,8 @@ program and [`src/web.rs`](src/web.rs) is the browser one.
   - the wasm target: `rustup target add wasm32-unknown-unknown`
   - `wasm-bindgen-cli`, at the same version as the `wasm-bindgen` in `Cargo.lock`
     (0.2.130 here): `cargo install wasm-bindgen-cli --version 0.2.130`
-  - the cadaclysm web package, `cadaclysm-0.14.0-web-pro.zip`, from the
-    [SDK's releases](https://github.com/rdeioris/cadaclysm-sdk/releases/tag/v0.14.0)
+  - the cadaclysm web package, `cadaclysm-0.14.2-web.zip`, from the
+    [SDK's releases](https://github.com/rdeioris/cadaclysm-sdk/releases/tag/v0.14.2)
   - any static web server. The steps below use Python's.
 
 ## Step 1: the crate
@@ -41,7 +41,7 @@ name = "desktop"
 path = "src/main.rs"
 
 [dependencies]
-cadaclysm-sdk = "0.14.1"
+cadaclysm-sdk = "0.14.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.100"
@@ -273,7 +273,7 @@ worker runs the same wasm, and a start function would run there too.
    wasm-bindgen --target web --out-dir web/app target/wasm32-unknown-unknown/release/nut.wasm
    ```
 
-3. Unzip `cadaclysm-0.14.0-web-pro.zip` and copy its `pkg` folder to `web/pkg`. The
+3. Unzip `cadaclysm-0.14.2-web.zip` and copy its `pkg` folder to `web/pkg`. The
    folder should now hold:
 
    ```text
@@ -332,4 +332,4 @@ and prints a notice on each open and export. A product, server or website licenc
 - In the browser, reading CAD files and healing aren't in the Rust crate yet; they work on
   the desktop.
 
-The example uses `cadaclysm-sdk` 0.14.1 with the 0.14.0 web package.
+The example uses `cadaclysm-sdk` 0.14.2 with the 0.14.2 web package.
