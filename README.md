@@ -2,15 +2,23 @@
 
 A hex nut modelled in Rust with [cadaclysm](https://cadaclysm.blitter.studio), then
 shown in two places from the same code: a desktop window and a web page, each with the
-nut's figures (volume, mass in steel, area, centroid) in the window's corner.
+nut's figures (volume, mass in steel, area, centroid) in the window's corner. Click a face
+and it turns orange, with what it is (its surface, area, centre and normal) in the other
+corner.
 
 | On the desktop | In the browser |
 |---|---|
 | ![The nut in a desktop window](screenshots/desktop.png) | ![The nut in a web page](screenshots/browser.png) |
 
-**[Try it in your browser](https://rdeioris.github.io/cadaclysm-nut-example/)**: the web page
-from this repository, rebuilt and published on every push to `main`
-(by [`.github/workflows/pages.yml`](.github/workflows/pages.yml)).
+**[Try it in your browser](https://cadaclysm.blitter.studio/nut/)**: this repository's `main`,
+built on the cadaclysm site against cadaclysm's latest code, as the
+[forge](https://cadaclysm.blitter.studio/forge/) is.
+
+> **`main` follows cadaclysm's development.** Clicking a face uses `View::run_with` in the
+> browser, which comes with the next `cadaclysm-sdk` release (0.15). Until then `main` builds
+> only against cadaclysm's own sources; to build it yourself with the released 0.14.2, check
+> out the [`sdk-0.14.2`](https://github.com/rdeioris/cadaclysm-nut-example/tree/sdk-0.14.2)
+> tag, the same nut and figures without the clicking.
 
 The nut is an exact B-rep solid, not a mesh: a hexagon prism intersected with a turned
 ring, giving 13 faces. You can save it as STEP and open it in any CAD program.
@@ -101,12 +109,18 @@ figures in the window's top-left corner. Both programs call it, so the desktop w
 same thing:
 
 ```rust
-use cadaclysm_sdk::view::{Anchor, Text, View};
+use cadaclysm_sdk::view::{Anchor, Item, Text, View};
 
 /// Steel, in kg per mm³ (7.85 g/cm³). The kernel measures the volume; the material is ours.
 const STEEL: f64 = 7.85e-6;
 
-pub fn present<'a>(view: &View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Result<String> {
+/// The nut on show: its item, which a selection colours, and a one-line summary.
+pub struct Shown<'v> {
+    pub item: Item<'v>,
+    pub summary: String,
+}
+
+pub fn present<'v, 'a>(view: &'v View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Result<Shown<'v>> {
     let mass = nut.mass(0.0)?;
     let faces = nut.faces()?;
     let kg = mass.volume * STEEL;
@@ -116,12 +130,12 @@ pub fn present<'a>(view: &View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Result<Str
         mass.volume, mass.area
     );
 
-    view.show_solid(nut, 0.05, None)?;
+    let item = view.show_solid(nut, 0.05, None)?;
     // The figures in the window's top-left corner, 16 pixels in, on a dark box.
     let text = Text::overlay(figures).size(16.0).colour("white").box_colour([0.0, 0.0, 0.0, 0.55]).padding(8.0);
     view.show_overlay_text(&text, Anchor::TopLeft, 16.0, 16.0, 0)?;
     view.frame()?;
-    Ok(format!("the nut: {faces} faces, {kg:.2} kg of steel"))
+    Ok(Shown { item, summary: format!("the nut: {faces} faces, {kg:.2} kg of steel") })
 }
 ```
 
@@ -133,10 +147,54 @@ pub fn present<'a>(view: &View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Result<Str
   stays in its corner when the window is resized. `Text::overlay` makes the text; its box
   colour has an alpha, so the dark box lets the nut show through.
 - **`frame`** fits the camera to what the view shows.
-- The returned line is a short summary for the program to print or display.
+- **`Shown`** carries the nut's `Item`, which the selection below colours, and a short
+  summary for the program to print or display.
 
 The `'a` lifetime says the view borrows the nut: the nut must live as long as the view
 that shows it.
+
+### Clicking a face
+
+A click on the nut picks the face under the pointer. `Selection`, also in
+[`src/lib.rs`](src/lib.rs), turns it orange and writes what it is in an overlay in the
+top-right corner; a click on nothing clears both:
+
+```rust
+pub fn face_info(nut: &Solid, face: u32) -> cadaclysm_sdk::Result<String> {
+    let kind = nut.face_kind(face)?;
+    let area = nut.face_sheet(face)?.mass(0.0)?.area;
+    let frame = nut.face_frame(face)?;
+    let ([x, y, z], [nx, ny, nz]) = (frame.origin(), frame.z());
+    Ok(format!(
+        "face {face} of {}\n{kind}\narea {area:.0} mm2\ncentre {x:.1}, {y:.1}, {z:.1} mm\nnormal {nx:.2}, {ny:.2}, {nz:.2}",
+        nut.faces()?
+    ))
+}
+
+impl Selection<'_, '_> {
+    pub fn on_event(&mut self, event: &ViewEvent) -> bool {
+        if let EventKind::Pick(pick) = &event.kind {
+            match pick {
+                Some(p) if p.overlay => {}                                   // a click on an overlay
+                Some(p) if p.item == self.item.id() => self.select(p.face),  // a face of the nut
+                _ => self.clear(),                                           // nothing there
+            }
+        }
+        true // keep the view running
+    }
+}
+```
+
+- **`EventKind::Pick`** is a click's answer: the item, and for a solid the face, under
+  the pointer, or `None` where there was nothing.
+- **`face_kind`** names the surface the face lies on (`plane`, `cylinder`, `cone`, ...),
+  **`face_sheet`** copies the face as a sheet of its own to measure its area, and
+  **`face_frame`** is the workplane the kernel lays on it: its centre and outward normal.
+- **`set_face_colours`** paints the face on the shown nut, and `clear_face_colours` puts it
+  back. The overlay is made the first time with `show_overlay_text`, changed with
+  `set_text` and taken away with `remove`.
+- **`on_event`** answers `true` to keep the view running: returning `false` would close it.
+  Step 4 and step 5 hand it every event of the view with `View::run_with`.
 
 ## Step 4: show it on the desktop
 
@@ -152,11 +210,14 @@ fn main() -> cadaclysm_sdk::Result<()> {
     nut.step("nut.step", None, Unit::Millimetre)?;
     println!("saved nut.step");
 
-    // A window of its own: drag to orbit, wheel to zoom.
+    // A window of its own: drag to orbit, wheel to zoom, click a face to select it.
     view::use_wgpu()?;
     let view = View::new(&ViewOptions { title: Some("cadaclysm nut".into()), ..ViewOptions::default() })?;
-    println!("{}", nut::present(&view, &nut)?);
-    view.run()?; // returns when the window is closed
+    let shown = nut::present(&view, &nut)?;
+    println!("{}", shown.summary);
+    // Hands every event of the window to the selection; returns when the window is closed.
+    let mut selection = nut::Selection::new(&view, &nut, &shown.item);
+    view.run_with(|e| selection.on_event(e))?;
     Ok(())
 }
 ```
@@ -176,13 +237,15 @@ the nut: 13 faces, 2.18 kg of steel
 ```
 
 The window opens with the nut framed and its figures in the top-left corner. Drag to orbit and use the
-wheel to zoom. The program ends when you close the window.
+wheel to zoom; click a face to see what it is. The program ends when you close the window.
 
 ![The nut in a desktop window](screenshots/desktop.png)
 
 - **`view::use_wgpu()`** picks the windowed view. Without it, the view draws into your
   terminal (sixel, kitty graphics or coloured blocks), which also works over SSH.
-- **`view.run()`** keeps the window open and returns when it is closed.
+- **`view.run_with(...)`** keeps the window open, hands each of its events (clicks, keys,
+  the pointer, the close) to the closure, and returns when the window is closed. The window
+  still orbits and zooms by itself: the events say what happened, they don't stop it.
 - **The notice** is normal: without a licence the libraries run in full and say so.
   See [The licence](#the-licence) below.
 
@@ -228,7 +291,8 @@ pub async fn worker_main() -> Result<(), JsValue> {
     let worker = worker::start(LoadOptions::new("./pkg/index.js")).await?;
     let nut = crate::nut()?;
     let view = View::on_canvas(worker.canvas(), &ViewOptions::default()).await?;
-    let summary = crate::present(&view, &nut).unwrap_or_else(|e| e.to_string());
+    let shown = crate::present(&view, &nut)?;
+    let summary = shown.summary.clone();
 
     let reply = worker.clone();
     worker.on_message(move |data| {
@@ -236,16 +300,18 @@ pub async fn worker_main() -> Result<(), JsValue> {
             let _ = reply.post(&JsValue::from_str(&summary));
         }
     });
-    view.run().await?;
+    let mut selection = crate::Selection::new(&view, &nut, &shown.item);
+    view.run_with(|e| selection.on_event(e)).await?;
     Ok(())
 }
 ```
 
 - **`View::on_canvas`** makes the view on the worker's canvas. It is the browser's
   `View::new`: the same `View`, with the same methods.
-- **`view.run().await`** is the browser's `run`. It delivers the messages and controls
-  that waited while the worker loaded, then keeps the view, and the nut, alive while the
-  page is open.
+- **`view.run_with(...).await`** is the browser's `run_with`. It delivers the messages and
+  controls that waited while the worker loaded, hands each click on the canvas to the
+  selection, as on the desktop, and keeps the view, and the nut, alive while the page is
+  open. The canvas orbits, zooms and pinches by itself.
 
 **The page**, [`web/index.html`](web/index.html), is a canvas, a status line and four
 lines of script:
@@ -339,4 +405,6 @@ and prints a notice on each open and export. A product, server or website licenc
 - In the browser, reading CAD files and healing aren't in the Rust crate yet; they work on
   the desktop.
 
-The example uses `cadaclysm-sdk` 0.14.2 with the 0.14.2 web package.
+`main` is built against cadaclysm's latest code, as the
+[live page](https://cadaclysm.blitter.studio/nut/) is; the `sdk-0.14.2` tag uses
+`cadaclysm-sdk` 0.14.2 with the 0.14.2 web package.
