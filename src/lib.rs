@@ -2,7 +2,7 @@
 //! `src/web.rs` in the browser.
 
 use cadaclysm_sdk::blacksmith::{Frame, Profile, Solid};
-use cadaclysm_sdk::view::{Align, Text, View};
+use cadaclysm_sdk::view::{Anchor, Text, View};
 
 #[cfg(target_arch = "wasm32")]
 mod web;
@@ -35,7 +35,7 @@ pub fn nut() -> cadaclysm_sdk::Result<Solid> {
 /// Steel, in kg per mm³ (7.85 g/cm³). The kernel measures the volume; the material is ours.
 const STEEL: f64 = 7.85e-6;
 
-/// Draws the nut in `view` with a label of its figures above it, and returns a one-line
+/// Draws the nut in `view` with its figures in the window's corner, and returns a one-line
 /// summary. The desktop window and the web page both call this.
 pub fn present<'a>(view: &View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Result<String> {
     let mass = nut.mass(0.0)?;
@@ -48,8 +48,9 @@ pub fn present<'a>(view: &View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Result<Str
     );
 
     view.show_solid(nut, 0.05, None)?;
-    // 70 mm up: 24 mm above the nut's top face, so the label clears its far rim.
-    view.show_text(&Text::label(figures, [cx as f32, cy as f32, 70.0]).size(16.0).colour("white").align(Align::Bottom))?;
+    // The figures in the window's top-left corner, 16 pixels in, on a dark box.
+    let text = Text::overlay(figures).size(16.0).colour("white").box_colour([0.0, 0.0, 0.0, 0.55]).padding(8.0);
+    view.show_overlay_text(&text, Anchor::TopLeft, 16.0, 16.0, 0)?;
     view.frame()?;
     Ok(format!("the nut: {faces} faces, {kg:.2} kg of steel"))
 }

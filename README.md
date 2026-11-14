@@ -2,7 +2,7 @@
 
 A hex nut modelled in Rust with [cadaclysm](https://cadaclysm.blitter.studio), then
 shown in two places from the same code: a desktop window and a web page, each with the
-nut's figures (volume, mass in steel, area, centroid) drawn beside it.
+nut's figures (volume, mass in steel, area, centroid) in the window's corner.
 
 | On the desktop | In the browser |
 |---|---|
@@ -93,11 +93,11 @@ as an error with the kernel's own explanation.
 ## Step 3: show it, with its figures
 
 Also in [`src/lib.rs`](src/lib.rs), `present` draws the nut in a `View` and writes its
-figures above it. Both programs call it, so the desktop window and the web page show the
+figures in the window's top-left corner. Both programs call it, so the desktop window and the web page show the
 same thing:
 
 ```rust
-use cadaclysm_sdk::view::{Align, Text, View};
+use cadaclysm_sdk::view::{Anchor, Text, View};
 
 /// Steel, in kg per mm³ (7.85 g/cm³). The kernel measures the volume; the material is ours.
 const STEEL: f64 = 7.85e-6;
@@ -113,8 +113,9 @@ pub fn present<'a>(view: &View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Result<Str
     );
 
     view.show_solid(nut, 0.05, None)?;
-    // 70 mm up: 24 mm above the nut's top face, so the label clears its far rim.
-    view.show_text(&Text::label(figures, [cx as f32, cy as f32, 70.0]).size(16.0).colour("white").align(Align::Bottom))?;
+    // The figures in the window's top-left corner, 16 pixels in, on a dark box.
+    let text = Text::overlay(figures).size(16.0).colour("white").box_colour([0.0, 0.0, 0.0, 0.55]).padding(8.0);
+    view.show_overlay_text(&text, Anchor::TopLeft, 16.0, 16.0, 0)?;
     view.frame()?;
     Ok(format!("the nut: {faces} faces, {kg:.2} kg of steel"))
 }
@@ -123,8 +124,10 @@ pub fn present<'a>(view: &View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Result<Str
 - **`nut.mass(0.0)`** measures the solid exactly: its volume, surface area and centroid.
   The kernel doesn't know what the nut is made of, so the density, steel here, is ours.
 - **`show_solid`** hands the exact solid to the view, which meshes it itself.
-- **`Text::label`** puts text at a point in the model, so it moves with the nut when you
-  orbit. `Align::Bottom` puts the text above that point.
+- **`show_overlay_text`** draws text over the window, hung from one of nine anchors
+  (`Anchor::TopLeft` here, 16 pixels in from each edge). The camera never moves it, and it
+  stays in its corner when the window is resized. `Text::overlay` makes the text; its box
+  colour has an alpha, so the dark box lets the nut show through.
 - **`frame`** fits the camera to what the view shows.
 - The returned line is a short summary for the program to print or display.
 
@@ -168,7 +171,7 @@ saved nut.step
 the nut: 13 faces, 2.18 kg of steel
 ```
 
-The window opens with the nut framed and its figures above it. Drag to orbit and use the
+The window opens with the nut framed and its figures in the top-left corner. Drag to orbit and use the
 wheel to zoom. The program ends when you close the window.
 
 ![The nut in a desktop window](screenshots/desktop.png)
