@@ -58,7 +58,22 @@ pub fn present<'v, 'a>(view: &'v View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Res
     let text = Text::overlay(figures).size(16.0).colour("white").box_colour([0.0, 0.0, 0.0, 0.55]).padding(8.0);
     view.show_overlay_text(&text, Anchor::TopLeft, 16.0, 16.0, 0)?;
     view.frame()?;
-    Ok(Shown { item, summary: format!("the nut: {faces} faces, {kg:.2} kg of steel") })
+    Ok(Shown { item, summary: format!("the nut: {faces} faces, {kg:.2} kg of steel — {}", cadaclysm_build()) })
+}
+
+/// The cadaclysm libraries this program runs on, as one line: their version, and the branch,
+/// commit and time they were built from (`blacksmith::build`, the same on the desktop and in
+/// the browser).
+pub fn cadaclysm_build() -> String {
+    let Ok(json) = cadaclysm_sdk::blacksmith::build() else { return "cadaclysm".into() };
+    // A flat object of strings: the text after `"key":`, between its quotes.
+    let field = |key: &str| -> String {
+        let Some(at) = json.find(&format!("\"{key}\"")) else { return "?".into() };
+        let rest = json[at + key.len() + 2..].trim_start().trim_start_matches(':').trim_start();
+        rest.strip_prefix('"').and_then(|r| r.split('"').next()).unwrap_or("?").to_string()
+    };
+    let time = field("time").replace('T', " ").replace('Z', " UTC");
+    format!("cadaclysm {} · {} {} · {time}", field("version"), field("branch"), field("commit"))
 }
 
 /// Face `face` of `nut` in words: the surface it lies on, its area, and the centre and outward

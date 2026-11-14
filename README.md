@@ -148,7 +148,10 @@ pub fn present<'v, 'a>(view: &'v View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Res
   colour has an alpha, so the dark box lets the nut show through.
 - **`frame`** fits the camera to what the view shows.
 - **`Shown`** carries the nut's `Item`, which the selection below colours, and a short
-  summary for the program to print or display.
+  summary for the program to print or display. The summary ends with `cadaclysm_build()`,
+  the cadaclysm libraries the program runs on: their version, and the branch, commit and
+  time they were built from (`blacksmith::build`), as the
+  [forge](https://cadaclysm.blitter.studio/forge/) shows them.
 
 The `'a` lifetime says the view borrows the nut: the nut must live as long as the view
 that shows it.
@@ -233,7 +236,7 @@ The first build takes a minute because it downloads the libraries. Then:
 ```text
 cadaclysm: unlicensed -- running without a production license; licenses at https://cadaclysm.blitter.studio/license
 saved nut.step
-the nut: 13 faces, 2.18 kg of steel
+the nut: 13 faces, 2.18 kg of steel — cadaclysm 0.14.2 · master 6b328c01c · 2026-11-14 16:02:45 UTC
 ```
 
 The window opens with the nut framed and its figures in the top-left corner. Drag to orbit and use the
@@ -365,7 +368,8 @@ worker runs the same wasm, and a start function would run there too.
    Then go to <http://localhost:8000>. The page must come from a server: browsers don't
    run wasm modules or workers from `file://`.
 
-The status line says "loading…", then "the nut: 13 faces, 2.18 kg of steel", and the nut
+The status line says "loading…", then "the nut: 13 faces, 2.18 kg of steel" and the cadaclysm
+build it runs on, and the nut
 appears with its figures, as on the desktop. Drag to orbit, use the wheel or a pinch
 to zoom.
 
