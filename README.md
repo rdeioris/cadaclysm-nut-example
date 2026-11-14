@@ -8,6 +8,10 @@ nut's figures (volume, mass in steel, area, centroid) in the window's corner.
 |---|---|
 | ![The nut in a desktop window](screenshots/desktop.png) | ![The nut in a web page](screenshots/browser.png) |
 
+**[Try it in your browser](https://rdeioris.github.io/cadaclysm-nut-example/)**: the web page
+from this repository, rebuilt and published on every push to `main`
+(by [`.github/workflows/pages.yml`](.github/workflows/pages.yml)).
+
 The nut is an exact B-rep solid, not a mesh: a hexagon prism intersected with a turned
 ring, giving 13 faces. You can save it as STEP and open it in any CAD program.
 
