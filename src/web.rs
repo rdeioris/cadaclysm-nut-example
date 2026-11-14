@@ -35,7 +35,8 @@ pub async fn worker_main() -> Result<(), JsValue> {
     let worker = worker::start(LoadOptions::new("./pkg/index.js")).await?;
     let nut = crate::nut()?;
     let view = View::on_canvas(worker.canvas(), &ViewOptions::default()).await?;
-    let summary = crate::present(&view, &nut).unwrap_or_else(|e| e.to_string());
+    let shown = crate::present(&view, &nut)?;
+    let summary = shown.summary.clone();
 
     let reply = worker.clone();
     worker.on_message(move |data| {
@@ -43,8 +44,9 @@ pub async fn worker_main() -> Result<(), JsValue> {
             let _ = reply.post(&JsValue::from_str(&summary));
         }
     });
-    // Hands over the waiting messages and the page's drag, wheel and pinch, and keeps the
-    // view (and the nut) alive while the page is open.
-    view.run().await?;
+    // Hands over the waiting messages and the page's drag, wheel and pinch, gives each click
+    // to the selection, and keeps the view (and the nut) alive while the page is open.
+    let mut selection = crate::Selection::new(&view, &nut, &shown.item);
+    view.run_with(|e| selection.on_event(e)).await?;
     Ok(())
 }

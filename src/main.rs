@@ -11,10 +11,13 @@ fn main() -> cadaclysm_sdk::Result<()> {
     nut.step("nut.step", None, Unit::Millimetre)?;
     println!("saved nut.step");
 
-    // A window of its own: drag to orbit, wheel to zoom.
+    // A window of its own: drag to orbit, wheel to zoom, click a face to select it.
     view::use_wgpu()?;
     let view = View::new(&ViewOptions { title: Some("cadaclysm nut".into()), ..ViewOptions::default() })?;
-    println!("{}", nut::present(&view, &nut)?);
-    view.run()?; // returns when the window is closed
+    let shown = nut::present(&view, &nut)?;
+    println!("{}", shown.summary);
+    // Hands every event of the window to the selection; returns when the window is closed.
+    let mut selection = nut::Selection::new(&view, &nut, &shown.item);
+    view.run_with(|e| selection.on_event(e))?;
     Ok(())
 }

@@ -2,7 +2,7 @@
 //! `src/web.rs` in the browser.
 
 use cadaclysm_sdk::blacksmith::{Frame, Profile, Solid};
-use cadaclysm_sdk::view::{Anchor, Text, View};
+use cadaclysm_sdk::view::{Anchor, EventKind, Item, Overlay, Pick, Text, View, ViewEvent};
 
 #[cfg(target_arch = "wasm32")]
 mod web;
@@ -35,9 +35,15 @@ pub fn nut() -> cadaclysm_sdk::Result<Solid> {
 /// Steel, in kg per mm³ (7.85 g/cm³). The kernel measures the volume; the material is ours.
 const STEEL: f64 = 7.85e-6;
 
-/// Draws the nut in `view` with its figures in the window's corner, and returns a one-line
-/// summary. The desktop window and the web page both call this.
-pub fn present<'a>(view: &View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Result<String> {
+/// The nut on show: its item, which a selection colours, and a one-line summary.
+pub struct Shown<'v> {
+    pub item: Item<'v>,
+    pub summary: String,
+}
+
+/// Draws the nut in `view` with its figures in the window's corner. The desktop window and
+/// the web page both call this.
+pub fn present<'v, 'a>(view: &'v View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Result<Shown<'v>> {
     let mass = nut.mass(0.0)?;
     let faces = nut.faces()?;
     let kg = mass.volume * STEEL;
@@ -47,10 +53,86 @@ pub fn present<'a>(view: &View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Result<Str
         mass.volume, mass.area
     );
 
-    view.show_solid(nut, 0.05, None)?;
+    let item = view.show_solid(nut, 0.05, None)?;
     // The figures in the window's top-left corner, 16 pixels in, on a dark box.
     let text = Text::overlay(figures).size(16.0).colour("white").box_colour([0.0, 0.0, 0.0, 0.55]).padding(8.0);
     view.show_overlay_text(&text, Anchor::TopLeft, 16.0, 16.0, 0)?;
     view.frame()?;
-    Ok(format!("the nut: {faces} faces, {kg:.2} kg of steel"))
+    Ok(Shown { item, summary: format!("the nut: {faces} faces, {kg:.2} kg of steel") })
+}
+
+/// Face `face` of `nut` in words: the surface it lies on, its area, and the centre and outward
+/// normal of the workplane the kernel lays on it.
+pub fn face_info(nut: &Solid, face: u32) -> cadaclysm_sdk::Result<String> {
+    let kind = nut.face_kind(face)?;
+    let area = nut.face_sheet(face)?.mass(0.0)?.area;
+    let frame = nut.face_frame(face)?;
+    let ([x, y, z], [nx, ny, nz]) = (frame.origin(), frame.z());
+    Ok(format!(
+        "face {face} of {}\n{kind}\narea {area:.0} mm2\ncentre {x:.1}, {y:.1}, {z:.1} mm\nnormal {nx:.2}, {ny:.2}, {nz:.2}",
+        nut.faces()?
+    ))
+}
+
+/// The face the last click chose: orange on the nut, its details in an overlay in the
+/// window's top-right corner. `View::run_with` hands every event to [`on_event`](Self::on_event).
+pub struct Selection<'v, 'a> {
+    view: &'v View<'a>,
+    nut: &'a Solid,
+    item: &'v Item<'v>,
+    info: Option<Overlay<'v>>,
+}
+
+impl<'v, 'a> Selection<'v, 'a> {
+    pub fn new(view: &'v View<'a>, nut: &'a Solid, item: &'v Item<'v>) -> Self {
+        Selection { view, nut, item, info: None }
+    }
+
+    /// A click on a face of the nut selects it; a click on nothing clears the selection; a
+    /// click on an overlay changes nothing. Always keeps the view running.
+    pub fn on_event(&mut self, event: &ViewEvent) -> bool {
+        if let EventKind::Pick(pick) = &event.kind {
+            if let Err(e) = self.pick(*pick) {
+                report(&e.to_string());
+            }
+        }
+        true
+    }
+
+    fn pick(&mut self, pick: Option<Pick>) -> cadaclysm_sdk::Result<()> {
+        match pick {
+            Some(p) if p.overlay => Ok(()),
+            Some(p) if p.item == self.item.id() => self.select(p.face),
+            _ => self.clear(),
+        }
+    }
+
+    fn select(&mut self, face: u32) -> cadaclysm_sdk::Result<()> {
+        self.item.set_face_colours(&[(face, "orange")])?;
+        let text = face_info(self.nut, face)?;
+        match &self.info {
+            Some(info) => info.set_text(&text)?,
+            None => {
+                let style = Text::overlay(text).size(16.0).colour("white").box_colour([0.0, 0.0, 0.0, 0.55]).padding(8.0);
+                self.info = Some(self.view.show_overlay_text(&style, Anchor::TopRight, 16.0, 16.0, 0)?);
+            }
+        }
+        Ok(())
+    }
+
+    fn clear(&mut self) -> cadaclysm_sdk::Result<()> {
+        self.item.clear_face_colours()?;
+        match self.info.take() {
+            Some(info) => info.remove(),
+            None => Ok(()),
+        }
+    }
+}
+
+/// An error a click ran into: the browser's console, or standard error on the desktop.
+fn report(message: &str) {
+    #[cfg(target_arch = "wasm32")]
+    web_sys::console::error_1(&message.into());
+    #[cfg(not(target_arch = "wasm32"))]
+    eprintln!("{message}");
 }
