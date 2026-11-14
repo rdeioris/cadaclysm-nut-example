@@ -236,7 +236,7 @@ The first build takes a minute because it downloads the libraries. Then:
 ```text
 cadaclysm: unlicensed -- running without a production license; licenses at https://cadaclysm.blitter.studio/license
 saved nut.step
-the nut: 13 faces, 2.18 kg of steel — cadaclysm 0.14.2 · master 8ba51c8c5 · 2026-11-14 16:59:52 UTC
+the nut: 13 faces, 2.18 kg of steel — cadaclysm 0.14.2 · master bf24933c6 · 2026-11-14 18:13:26 UTC
 ```
 
 The window opens with the nut framed and its figures in the top-left corner. Drag to orbit and use the
