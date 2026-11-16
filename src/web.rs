@@ -7,9 +7,10 @@ use cadaclysm_sdk::web::page::{self, App};
 use cadaclysm_sdk::web::{worker, LoadOptions};
 use wasm_bindgen::prelude::*;
 
-/// Runs on the page (index.html calls it): start the worker and ask it about the nut.
+/// Runs on the page (index.html calls it): start the worker, ask it about the nut and hand its
+/// answer to `show`.
 #[wasm_bindgen]
-pub fn page_main() -> Result<(), JsValue> {
+pub fn page_main(show: js_sys::Function) -> Result<(), JsValue> {
     let document = web_sys::window().and_then(|w| w.document()).expect("a page");
     let canvas: web_sys::HtmlCanvasElement = document
         .get_element_by_id("nut")
@@ -18,11 +19,8 @@ pub fn page_main() -> Result<(), JsValue> {
         .map_err(|_| "#nut isn't a canvas")?;
 
     let worker = page::spawn(&canvas, App { glue: "./app/nut.js", entry: "worker_main", package: "./pkg/index.js" })?;
-    let status = document.get_element_by_id("status");
     worker.on_message(move |data| {
-        if let Some(status) = &status {
-            status.set_text_content(data.as_string().as_deref());
-        }
+        let _ = show.call1(&JsValue::NULL, &data);
     });
     // Sent at once, while the worker is still loading: it is kept until the worker listens.
     worker.post(&JsValue::from_str("figures?"))?;
@@ -36,12 +34,16 @@ pub async fn worker_main() -> Result<(), JsValue> {
     let nut = crate::nut()?;
     let view = View::on_canvas(worker.canvas(), &ViewOptions::default()).await?;
     let shown = crate::present(&view, &nut)?;
-    let summary = shown.summary.clone();
+    // The answer to "figures?": the summary, and the cadaclysm build as the kernel gives it
+    // (JSON text), for the page to show.
+    let figures = js_sys::Object::new();
+    js_sys::Reflect::set(&figures, &"summary".into(), &shown.summary.as_str().into())?;
+    js_sys::Reflect::set(&figures, &"build".into(), &cadaclysm_sdk::blacksmith::build()?.into())?;
 
     let reply = worker.clone();
     worker.on_message(move |data| {
         if data.as_string().as_deref() == Some("figures?") {
-            let _ = reply.post(&JsValue::from_str(&summary));
+            let _ = reply.post(&figures);
         }
     });
     // Hands over the waiting messages and the page's drag, wheel and pinch, gives each click

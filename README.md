@@ -148,10 +148,7 @@ pub fn present<'v, 'a>(view: &'v View<'a>, nut: &'a Solid) -> cadaclysm_sdk::Res
   colour has an alpha, so the dark box lets the nut show through.
 - **`frame`** fits the camera to what the view shows.
 - **`Shown`** carries the nut's `Item`, which the selection below colours, and a short
-  summary for the program to print or display. The summary ends with `cadaclysm_build()`,
-  the cadaclysm libraries the program runs on: their version, and the branch, commit and
-  time they were built from (`blacksmith::build`), as the
-  [forge](https://cadaclysm.blitter.studio/forge/) shows them.
+  summary for the program to print or display.
 
 The `'a` lifetime says the view borrows the nut: the nut must live as long as the view
 that shows it.
@@ -236,7 +233,8 @@ The first build takes a minute because it downloads the libraries. Then:
 ```text
 cadaclysm: unlicensed -- running without a production license; licenses at https://cadaclysm.blitter.studio/license
 saved nut.step
-the nut: 13 faces, 2.18 kg of steel — cadaclysm 0.14.2 · master bf24933c6 · 2026-11-14 18:13:26 UTC
+the nut: 13 faces, 2.18 kg of steel
+cadaclysm {"branch":"master","commit":"bf24933c6","date":"2026-11-14","time":"2026-11-14T18:13:26Z","version":"0.14.2"}
 ```
 
 The window opens with the nut framed and its figures in the top-left corner. Drag to orbit and use the
@@ -262,14 +260,15 @@ The kernel blocks the thread it runs on, so it shouldn't run on the page's own t
 the page would freeze. [`src/web.rs`](src/web.rs) has two halves: one on the page and one
 in a Web Worker.
 
-**On the page**, `page_main` starts the worker and asks it about the nut:
+**On the page**, `page_main` starts the worker, asks it about the nut and hands the answer
+to the page's `show`:
 
 ```rust
 #[wasm_bindgen]
-pub fn page_main() -> Result<(), JsValue> {
+pub fn page_main(show: js_sys::Function) -> Result<(), JsValue> {
     // ... find the <canvas id="nut"> ...
     let worker = page::spawn(&canvas, App { glue: "./app/nut.js", entry: "worker_main", package: "./pkg/index.js" })?;
-    worker.on_message(move |data| { /* show the worker's reply in the status line */ });
+    worker.on_message(move |data| { let _ = show.call1(&JsValue::NULL, &data); });
     worker.post(&JsValue::from_str("figures?"))?;
     Ok(())
 }
@@ -295,12 +294,14 @@ pub async fn worker_main() -> Result<(), JsValue> {
     let nut = crate::nut()?;
     let view = View::on_canvas(worker.canvas(), &ViewOptions::default()).await?;
     let shown = crate::present(&view, &nut)?;
-    let summary = shown.summary.clone();
+    let figures = js_sys::Object::new();
+    js_sys::Reflect::set(&figures, &"summary".into(), &shown.summary.as_str().into())?;
+    js_sys::Reflect::set(&figures, &"build".into(), &cadaclysm_sdk::blacksmith::build()?.into())?;
 
     let reply = worker.clone();
     worker.on_message(move |data| {
         if data.as_string().as_deref() == Some("figures?") {
-            let _ = reply.post(&JsValue::from_str(&summary));
+            let _ = reply.post(&figures);
         }
     });
     let mut selection = crate::Selection::new(&view, &nut, &shown.item);
@@ -309,6 +310,9 @@ pub async fn worker_main() -> Result<(), JsValue> {
 }
 ```
 
+- **The answer** to `"figures?"` is an object: the summary and `blacksmith::build()`, the
+  cadaclysm libraries the worker runs on as the kernel gives them (JSON text). The page
+  formats it.
 - **`View::on_canvas`** makes the view on the worker's canvas. It is the browser's
   `View::new`: the same `View`, with the same methods.
 - **`view.run_with(...).await`** is the browser's `run_with`. It delivers the messages and
@@ -316,16 +320,23 @@ pub async fn worker_main() -> Result<(), JsValue> {
   selection, as on the desktop, and keeps the view, and the nut, alive while the page is
   open. The canvas orbits, zooms and pinches by itself.
 
-**The page**, [`web/index.html`](web/index.html), is a canvas, a status line and four
-lines of script:
+**The page**, [`web/index.html`](web/index.html), is a canvas, a status line and a few
+lines of script. `show` writes the worker's answer in the status line, the cadaclysm build
+as its version, branch, commit and build time, as the
+[forge](https://cadaclysm.blitter.studio/forge/) shows it:
 
 ```html
 <div id="status">loading…</div>
 <canvas id="nut"></canvas>
 <script type="module">
 import init, { page_main } from "./app/nut.js";
+const status = document.getElementById("status");
+const show = ({ summary, build }) => {
+    const b = JSON.parse(build);
+    status.textContent = `${summary} — cadaclysm ${b.version} · ${b.branch} ${b.commit} · ${b.time.replace("T", " ").replace(/Z$/, " UTC")}`;
+};
 await init();
-page_main();
+page_main(show);
 </script>
 ```
 

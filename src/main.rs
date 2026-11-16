@@ -16,6 +16,8 @@ fn main() -> cadaclysm_sdk::Result<()> {
     let view = View::new(&ViewOptions { title: Some("cadaclysm nut".into()), ..ViewOptions::default() })?;
     let shown = nut::present(&view, &nut)?;
     println!("{}", shown.summary);
+    // The cadaclysm libraries it runs on: version, branch, commit and build time, as JSON.
+    println!("cadaclysm {}", cadaclysm_sdk::blacksmith::build()?);
     // Hands every event of the window to the selection; returns when the window is closed.
     let mut selection = nut::Selection::new(&view, &nut, &shown.item);
     view.run_with(|e| selection.on_event(e))?;

@@ -77,6 +77,7 @@ name = "nut"
 version = "0.1.0"
 dependencies = [
  "cadaclysm-sdk",
+ "js-sys",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
