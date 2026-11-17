@@ -4,7 +4,8 @@ A hex nut modelled in Rust with [cadaclysm](https://cadaclysm.blitter.studio), t
 shown in two places from the same code: a desktop window and a web page, each with the
 nut's figures (volume, mass in steel, area, centroid) in the window's corner. Click a face
 and it turns orange, with what it is (its surface, area, centre and normal) in the other
-corner.
+corner. The nut turns on a turntable, with play, pause, seek and loop controls along the
+bottom.
 
 | On the desktop | In the browser |
 |---|---|
@@ -15,13 +16,15 @@ built on the cadaclysm site against cadaclysm's latest code, as the
 [forge](https://cadaclysm.blitter.studio/forge/) is.
 
 > **`main` follows cadaclysm's development.** Clicking a face uses `View::run_with` in the
-> browser, which comes with the next `cadaclysm-sdk` release (0.15). Until then `main` builds
+> browser, and the turntable plays a kernel animation there; both come with the next
+> `cadaclysm-sdk` release (0.15). Until then `main` builds
 > only against cadaclysm's own sources; to build it yourself with the released 0.14.2, check
 > out the [`sdk-0.14.2`](https://github.com/rdeioris/cadaclysm-nut-example/tree/sdk-0.14.2)
-> tag, the same nut and figures without the clicking.
+> tag, the same nut and figures without the clicking and the turntable.
 
 The nut is an exact B-rep solid, not a mesh: a hexagon prism intersected with a turned
-ring, giving 13 faces. You can save it as STEP and open it in any CAD program.
+ring, with a real screw thread cut into its bore, giving 112 faces. You can save it as STEP
+and open it in any CAD program.
 
 This README walks through the example one step at a time. The code is short:
 [`src/lib.rs`](src/lib.rs) builds the nut and shows it, [`src/main.rs`](src/main.rs) is the desktop
@@ -68,10 +71,10 @@ web-sys = { version = "0.3.77", features = ["Document", "Element", "HtmlCanvasEl
 
 ## Step 2: model the nut
 
-[`src/lib.rs`](src/lib.rs) builds the nut in three moves:
+[`src/lib.rs`](src/lib.rs) builds the nut in four moves:
 
 ```rust
-use cadaclysm_sdk::blacksmith::{Frame, Profile, Solid};
+use cadaclysm_sdk::blacksmith::{Frame, Profile, Solid, ThreadOptions};
 
 pub fn nut() -> cadaclysm_sdk::Result<Solid> {
     // A hexagon 60 mm from the centre to each corner, extruded 46 mm up from the XY plane.
@@ -86,8 +89,25 @@ pub fn nut() -> cadaclysm_sdk::Result<Solid> {
     ])?;
     let ring = Solid::revolve_in_plane(&section, &Frame::xz([0.0; 3]), [0.0, 0.0], [0.0, 1.0], std::f64::consts::TAU)?;
 
-    // What the two share is the nut. 0.05 mm is the tolerance the boolean works at.
-    prism.common(&ring, 0.05)
+    // What the two share is the blank nut. 0.05 mm is the tolerance the boolean works at.
+    let blank = prism.common(&ring, 0.05)?;
+
+    // The bore is the one cylinder face of the blank whose middle lies 30 mm from the axis.
+    let mut bores = Vec::new();
+    for face in 0..blank.faces()? {
+        // face_ref: the surface's kind (cylinder 1), then a point on the face's middle.
+        let r = blank.face_ref(face)?;
+        if r[0] == 1.0 && (r[1].hypot(r[2]) - 30.0).abs() < 1e-6 {
+            bores.push(face);
+        }
+    }
+    assert_eq!(bores.len(), 1, "the nut's bore: expected one cylinder face 30 mm from the axis, found {bores:?}");
+
+    // An internal thread: the explicit form, a pitch of 6 mm (ISO coarse for a 60 mm bore) with
+    // the bore taken as the basic minor diameter, along the whole face.
+    let options = ThreadOptions { pitch: Some(6.0), ..ThreadOptions::default() };
+    let (nut, _report) = blank.thread(bores[0], None, &options)?;
+    Ok(nut)
 }
 ```
 
@@ -96,8 +116,14 @@ pub fn nut() -> cadaclysm_sdk::Result<Solid> {
 2. **The ring.** The section is half of a ring's cross-section: its inner edge at radius
    30 mm is the hole, and its sloped corners at the top and bottom become the chamfers.
    `Solid::revolve_in_plane` turns it a full circle about the Z axis.
-3. **The nut.** `common` keeps only the volume that the prism and the ring share: the
+3. **The blank nut.** `common` keeps only the volume that the prism and the ring share: the
    ring bores the hole and chamfers both faces, and the prism keeps its six flat sides.
+4. **The thread.** The bore is the one cylinder face whose middle lies 30 mm from the axis, so
+   the code finds it by its geometry and stops if it is not exactly one face. `Solid::thread`
+   then cuts a real internal screw thread into it, a 6 mm pitch ISO profile along the whole
+   bore, with the bore taken as the thread's minor diameter. This is geometry, not a drawing
+   on the surface, which is why the nut now has 112 faces. It also makes building and drawing
+   the nut much slower: the window takes several minutes to show it.
 
 Every call returns a `Result`. A bad input, such as a polygon with two sides, comes back
 as an error with the kernel's own explanation.
@@ -194,7 +220,49 @@ impl Selection<'_, '_> {
   back. The overlay is made the first time with `show_overlay_text`, changed with
   `set_text` and taken away with `remove`.
 - **`on_event`** answers `true` to keep the view running: returning `false` would close it.
-  Step 4 and step 5 hand it every event of the view with `View::run_with`.
+  Step 4 and step 5 hand it every event of the view with `View::run_with`, through `Nut`.
+
+### Turning the nut
+
+The nut also turns, once every 6 seconds, on a turntable. `Turntable`, in
+[`src/lib.rs`](src/lib.rs), plays a kernel animation on the view's timeline and draws its
+controls along the bottom:
+
+```rust
+use cadaclysm_sdk::blacksmith::{Animation, InterpolatorMode};
+use cadaclysm_sdk::view::AnimationBinding;
+
+pub fn new(view: &'v View<'a>, item: &Item<'v>, pivot: [f64; 3]) -> cadaclysm_sdk::Result<Self> {
+    let mut animation = Animation::new()?;
+    // A rotate track turns whatever is bound to "nut": 0 to 360 degrees about the Z axis.
+    animation.rotate("nut", &[(0.0, 0.0), (TURN_SECONDS, 360.0)], pivot, [0.0, 0.0, 1.0], InterpolatorMode::Linear)?;
+    // A value track moves nothing: the readout asks it for the angle at the playhead.
+    animation.value("angle", &[(0.0, [0.0]), (TURN_SECONDS, [360.0])], InterpolatorMode::Linear)?;
+    view.play_animation(&animation, &[AnimationBinding { target: "nut", item: item.id(), node: None }])?;
+    view.set_loop(true)?;
+    view.play(1.0)?;
+    // ... the controls: overlays along the bottom ...
+}
+```
+
+Both programs make it with `Turntable::new(&view, &shown.item, [0.0, 0.0, 23.0])`. The
+pivot is the nut's centre: it is centred on the Z axis and stands 46 mm tall.
+
+- **One rotate track and one value track.** The animation has two tracks. `rotate` turns
+  the item bound to its target name, `"nut"`, through 360 degrees in 6 seconds. `value` holds
+  plain numbers and is bound to nothing: the readout reads the angle from it.
+- **`play_animation`** puts the animation on the view's timeline and binds each target name
+  to an item. The kernel evaluates the tracks and moves the nut; nothing is sent from the
+  page on each frame.
+- **The controls** are overlays, like the figures: a button that says `pause` while the nut
+  turns and `play` while it is stopped, a seek bar of 24 segments that fill orange up to the
+  playhead, a `loop on` / `loop off` toggle, and a readout such as `3.1 / 6.0 s  187 deg`.
+  Click a segment to seek to it.
+- **`EventKind::Timeline`** is the event the view sends at each tick of the timeline. The
+  turntable updates the readout, the bar and the button on it, and a click on an overlay
+  that is one of its controls is its click too.
+- **`Nut`** holds the turntable and the selection, and hands each event to the turntable
+  first: what it doesn't take, the selection gets.
 
 ## Step 4: show it on the desktop
 
@@ -215,9 +283,11 @@ fn main() -> cadaclysm_sdk::Result<()> {
     let view = View::new(&ViewOptions { title: Some("cadaclysm nut".into()), ..ViewOptions::default() })?;
     let shown = nut::present(&view, &nut)?;
     println!("{}", shown.summary);
-    // Hands every event of the window to the selection; returns when the window is closed.
-    let mut selection = nut::Selection::new(&view, &nut, &shown.item);
-    view.run_with(|e| selection.on_event(e))?;
+    // The nut turns on a turntable, with its controls along the bottom. Every tick and click of
+    // the window goes to the turntable first, then to the selection; returns when the window is closed.
+    let turntable = nut::Turntable::new(&view, &shown.item, [0.0, 0.0, 23.0])?;
+    let mut nut = nut::Nut { turntable, selection: nut::Selection::new(&view, &nut, &shown.item) };
+    view.run_with(|e| nut.on_event(e))?;
     Ok(())
 }
 ```
@@ -233,12 +303,13 @@ The first build takes a minute because it downloads the libraries. Then:
 ```text
 cadaclysm: unlicensed -- running without a production license; licenses at https://cadaclysm.blitter.studio/license
 saved nut.step
-the nut: 13 faces, 2.18 kg of steel
+the nut: 112 faces, 2.08 kg of steel
 cadaclysm {"branch":"master","commit":"bf24933c6","date":"2026-11-14","time":"2026-11-14T18:13:26Z","version":"0.14.2"}
 ```
 
-The window opens with the nut framed and its figures in the top-left corner. Drag to orbit and use the
-wheel to zoom; click a face to see what it is. The program ends when you close the window.
+The window opens with the nut framed, turning, with its figures in the top-left corner and
+the controls along the bottom. Drag to orbit and use the wheel to zoom; click a face to see
+what it is, or a control to pause, seek or loop. The program ends when you close the window.
 
 ![The nut in a desktop window](screenshots/desktop.png)
 
@@ -304,8 +375,9 @@ pub async fn worker_main() -> Result<(), JsValue> {
             let _ = reply.post(&figures);
         }
     });
-    let mut selection = crate::Selection::new(&view, &nut, &shown.item);
-    view.run_with(|e| selection.on_event(e)).await?;
+    let turntable = crate::Turntable::new(&view, &shown.item, [0.0, 0.0, 23.0])?;
+    let mut nut = crate::Nut { turntable, selection: crate::Selection::new(&view, &nut, &shown.item) };
+    view.run_with(|e| nut.on_event(e)).await?;
     Ok(())
 }
 ```
@@ -316,8 +388,8 @@ pub async fn worker_main() -> Result<(), JsValue> {
 - **`View::on_canvas`** makes the view on the worker's canvas. It is the browser's
   `View::new`: the same `View`, with the same methods.
 - **`view.run_with(...).await`** is the browser's `run_with`. It delivers the messages and
-  controls that waited while the worker loaded, hands each click on the canvas to the
-  selection, as on the desktop, and keeps the view, and the nut, alive while the page is
+  controls that waited while the worker loaded, hands each click on the canvas and each
+  tick of the timeline to the turntable and the selection, as on the desktop, and keeps the view, and the nut, alive while the page is
   open. The canvas orbits, zooms and pinches by itself.
 
 **The page**, [`web/index.html`](web/index.html), is a canvas, a status line and a few
@@ -379,10 +451,10 @@ worker runs the same wasm, and a start function would run there too.
    Then go to <http://localhost:8000>. The page must come from a server: browsers don't
    run wasm modules or workers from `file://`.
 
-The status line says "loading…", then "the nut: 13 faces, 2.18 kg of steel" and the cadaclysm
+The status line says "loading…", then "the nut: 112 faces, 2.08 kg of steel" and the cadaclysm
 build it runs on, and the nut
-appears with its figures, as on the desktop. Drag to orbit, use the wheel or a pinch
-to zoom.
+appears with its figures, turning, with its controls along the bottom, as on the desktop.
+Drag to orbit, use the wheel or a pinch to zoom.
 
 ![The nut in a web page](screenshots/browser.png)
 

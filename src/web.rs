@@ -46,9 +46,11 @@ pub async fn worker_main() -> Result<(), JsValue> {
             let _ = reply.post(&figures);
         }
     });
-    // Hands over the waiting messages and the page's drag, wheel and pinch, gives each click
-    // to the selection, and keeps the view (and the nut) alive while the page is open.
-    let mut selection = crate::Selection::new(&view, &nut, &shown.item);
-    view.run_with(|e| selection.on_event(e)).await?;
+    // Hands over the waiting messages and the page's drag, wheel and pinch, gives each tick and
+    // click to the turntable first, then to the selection, and keeps the view (and the nut)
+    // alive while the page is open.
+    let turntable = crate::Turntable::new(&view, &shown.item, [0.0, 0.0, 23.0])?;
+    let mut nut = crate::Nut { turntable, selection: crate::Selection::new(&view, &nut, &shown.item) };
+    view.run_with(|e| nut.on_event(e)).await?;
     Ok(())
 }
