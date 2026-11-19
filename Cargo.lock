@@ -10,9 +10,9 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "cadaclysm-sdk"
-version = "0.14.2"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7541a6eb930040517da53fdcec703c5e7ac75c5bc08d0db32956b402090709b"
+checksum = "493104def93354cd63ad95e9c182b6927ff1ac10fcd2dae11e0f68bca3972297"
 dependencies = [
  "js-sys",
  "libloading",
