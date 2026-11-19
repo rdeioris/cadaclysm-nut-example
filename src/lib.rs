@@ -43,8 +43,9 @@ pub fn nut() -> cadaclysm_sdk::Result<Solid> {
     assert_eq!(bores.len(), 1, "the nut's bore: expected one cylinder face 30 mm from the axis, found {bores:?}");
 
     // An internal thread: the explicit form, a pitch of 6 mm (ISO coarse for a 60 mm bore) with
-    // the bore taken as the basic minor diameter, along the whole face.
-    let options = ThreadOptions { pitch: Some(6.0), ..ThreadOptions::default() };
+    // the bore taken as the basic minor diameter, along the whole face, cut at the same 0.05 mm
+    // as the boolean above.
+    let options = ThreadOptions { pitch: Some(6.0), tolerance: Some(0.05), ..ThreadOptions::default() };
     let (nut, _report) = blank.thread(bores[0], None, &options)?;
     Ok(nut)
 }
