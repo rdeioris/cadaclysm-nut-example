@@ -194,7 +194,7 @@ impl<'v, 'a> Turntable<'v, 'a> {
         view.play(1.0)?;
 
         let button = view.show_overlay_text(&control_text("pause"), Anchor::BottomLeft, MARGIN, MARGIN, 0)?;
-        let segments = (0..SEGMENTS).map(|k| segment(view, k, false)).collect::<cadaclysm_sdk::Result<Vec<_>>>()?;
+        let segments = (0..SEGMENTS).map(|k| segment(view, k)).collect::<cadaclysm_sdk::Result<Vec<_>>>()?;
         let loop_toggle = view.show_overlay_text(&control_text("loop on"), Anchor::BottomLeft, LOOP_X, MARGIN, 0)?;
         let readout = view.show_overlay_text(&control_text(&readout_text(&animation, 0.0)?), Anchor::BottomLeft, READOUT_X, MARGIN, 0)?;
         Ok(Turntable { view, animation, button, loop_toggle, readout, segments, filled: 0, looping: true, playing: true })
@@ -248,21 +248,22 @@ impl<'v, 'a> Turntable<'v, 'a> {
         // A segment is orange once the playhead reaches its middle.
         let filled = (t / TURN_SECONDS * SEGMENTS as f64 + 0.5).floor().clamp(0.0, SEGMENTS as f64) as usize;
         for k in self.filled.min(filled)..self.filled.max(filled) {
-            // An overlay shape keeps the fill it was shown with, so a new colour is a new shape.
-            let old = std::mem::replace(&mut self.segments[k], segment(self.view, k, k < filled)?);
-            old.remove()?;
+            if k < filled {
+                self.segments[k].set_colour("orange")?;
+            } else {
+                self.segments[k].set_colour([0.35; 3])?;
+            }
         }
         self.filled = filled;
         self.show_playing(self.view.playing())
     }
 }
 
-/// Segment `k` of the seek bar: a grey rectangle, orange when `filled`.
-fn segment<'v>(view: &'v View<'_>, k: usize, filled: bool) -> cadaclysm_sdk::Result<Overlay<'v>> {
+/// Segment `k` of the seek bar: a grey rectangle, recoloured orange as the playhead passes it.
+fn segment<'v>(view: &'v View<'_>, k: usize) -> cadaclysm_sdk::Result<Overlay<'v>> {
     let (w, h) = ((SEGMENT_W - 2.0) as f64, 28.0);
     let rectangle = Profile::polygon(&[[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]])?;
-    let style = if filled { OverlayStyle::default().fill("orange") } else { OverlayStyle::default().fill([0.35; 3]) };
-    view.show_overlay(&rectangle, Anchor::BottomLeft, BAR_X + k as f32 * SEGMENT_W, MARGIN, &style.stroke("none"))
+    view.show_overlay(&rectangle, Anchor::BottomLeft, BAR_X + k as f32 * SEGMENT_W, MARGIN, &OverlayStyle::default().fill([0.35; 3]).stroke("none"))
 }
 
 /// `3.1 / 6.0 s  187 deg`: the time, and the angle the value track holds then.
