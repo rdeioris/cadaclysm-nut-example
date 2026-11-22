@@ -18,9 +18,12 @@
 // app/ is this crate built by wasm-bindgen, pkg/ the cadaclysm web package.
 import init, { page_main } from "./app/nut.js";
 const status = document.getElementById("status");
-// The worker's answer: the nut's summary, and the cadaclysm build it runs on as JSON -- shown
-// as its version, and the branch, commit and time it was built from.
-const show = ({ summary, build }) => {
+// The worker's answers: what it is doing (text), then the nut's summary and the cadaclysm
+// build it runs on as JSON -- shown as its version, and the branch, commit and time it was
+// built from.
+const show = (answer) => {
+    if (typeof answer === "string") { status.textContent = answer; return; }
+    const { summary, build } = answer;
     const b = JSON.parse(build);
     status.textContent = `${summary} — cadaclysm ${b.version} · ${b.branch} ${b.commit} · ${b.time.replace("T", " ").replace(/Z$/, " UTC")}`;
 };

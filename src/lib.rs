@@ -10,6 +10,12 @@ mod web;
 /// A hex nut: a hexagon extruded 46 mm, cut down to the part it shares with a turned ring,
 /// which bores the hole and chamfers both ends, and a screw thread cut into the bore.
 pub fn nut() -> cadaclysm_sdk::Result<Solid> {
+    threaded(&blank()?)
+}
+
+/// The nut before its thread: a hexagon extruded 46 mm, cut down to the part it shares with a
+/// turned ring, which bores the hole and chamfers both ends. Quick to build.
+pub fn blank() -> cadaclysm_sdk::Result<Solid> {
     // A hexagon 60 mm from the centre to each corner, extruded 46 mm up from the XY plane.
     let hexagon = Profile::regular_polygon([0.0, 0.0], 60.0, 6, 0.0)?;
     let prism = Solid::extrude(&hexagon, &Frame::xy([0.0; 3]), 46.0)?;
@@ -28,9 +34,12 @@ pub fn nut() -> cadaclysm_sdk::Result<Solid> {
     ])?;
     let ring = Solid::revolve_in_plane(&section, &Frame::xz([0.0; 3]), [0.0, 0.0], [0.0, 1.0], std::f64::consts::TAU)?;
 
-    // What the two share is the nut. 0.05 mm is the tolerance the boolean works at.
-    let blank = prism.common(&ring, 0.05)?;
+    // What the two share is the blank nut. 0.05 mm is the tolerance the boolean works at.
+    prism.common(&ring, 0.05)
+}
 
+/// `blank` with a screw thread cut into its bore: the slow step.
+pub fn threaded(blank: &Solid) -> cadaclysm_sdk::Result<Solid> {
     // The bore is the one cylinder face of the blank whose middle lies 30 mm from the axis.
     let mut bores = Vec::new();
     for face in 0..blank.faces()? {

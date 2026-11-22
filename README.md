@@ -64,7 +64,7 @@ cadaclysm-sdk = "0.15.0"
 wasm-bindgen = "0.2.100"
 js-sys = "0.3.77"
 wasm-bindgen-futures = "0.4.50"
-web-sys = { version = "0.3.77", features = ["console", "Document", "Element", "HtmlCanvasElement", "Window"] }
+web-sys = { version = "0.3.77", features = ["console", "Document", "Element", "HtmlCanvasElement", "Window", "WorkerGlobalScope"] }
 ```
 
 - The library holds the nut. The desktop program links it as an `rlib`. The browser
@@ -74,12 +74,18 @@ web-sys = { version = "0.3.77", features = ["console", "Document", "Element", "H
 
 ## Step 2: model the nut
 
-[`src/lib.rs`](src/lib.rs) builds the nut in four moves:
+[`src/lib.rs`](src/lib.rs) builds the nut in four moves, in two functions: `blank` makes
+the nut without its thread, quickly, and `threaded` cuts the thread into it. The browser
+shows the blank while the thread is cut (step 5).
 
 ```rust
 use cadaclysm_sdk::blacksmith::{Frame, Profile, Solid, ThreadOptions};
 
 pub fn nut() -> cadaclysm_sdk::Result<Solid> {
+    threaded(&blank()?)
+}
+
+pub fn blank() -> cadaclysm_sdk::Result<Solid> {
     // A hexagon 60 mm from the centre to each corner, extruded 46 mm up from the XY plane.
     let hexagon = Profile::regular_polygon([0.0, 0.0], 60.0, 6, 0.0)?;
     let prism = Solid::extrude(&hexagon, &Frame::xy([0.0; 3]), 46.0)?;
@@ -93,8 +99,10 @@ pub fn nut() -> cadaclysm_sdk::Result<Solid> {
     let ring = Solid::revolve_in_plane(&section, &Frame::xz([0.0; 3]), [0.0, 0.0], [0.0, 1.0], std::f64::consts::TAU)?;
 
     // What the two share is the blank nut. 0.05 mm is the tolerance the boolean works at.
-    let blank = prism.common(&ring, 0.05)?;
+    prism.common(&ring, 0.05)
+}
 
+pub fn threaded(blank: &Solid) -> cadaclysm_sdk::Result<Solid> {
     // The bore is the one cylinder face of the blank whose middle lies 30 mm from the axis.
     let mut bores = Vec::new();
     for face in 0..blank.faces()? {
@@ -127,8 +135,7 @@ pub fn nut() -> cadaclysm_sdk::Result<Solid> {
    then cuts a real internal screw thread into it, a 6 mm pitch ISO profile along the whole
    bore, with the bore taken as the thread's minor diameter, at the same 0.05 mm tolerance as
    the boolean. This is geometry, not a drawing on the surface, and it is the slow step: on
-   cadaclysm's latest code the window shows the nut in about 20 seconds, with 0.15.0 in about
-   two minutes.
+   cadaclysm's latest code it takes a few seconds, with 0.15.0 about two minutes.
 
 Every call returns a `Result`. A bad input, such as a polygon with two sides, comes back
 as an error with the kernel's own explanation.
@@ -360,15 +367,28 @@ pub fn page_main(show: js_sys::Function) -> Result<(), JsValue> {
 The `"figures?"` message is posted at once, while the worker is still loading. It is
 kept and delivered once the worker is ready for it.
 
-**In the worker**, `worker_main` loads the package, builds the nut and shows it on the
-canvas with the same `present` as the desktop:
+**In the worker**, `worker_main` loads the package and shows the blank nut at once. Then it
+cuts the thread and shows the nut on the canvas with the same `present` as the desktop:
 
 ```rust
 #[wasm_bindgen]
 pub async fn worker_main() -> Result<(), JsValue> {
     let worker = worker::start(LoadOptions::new("./pkg/index.js")).await?;
-    let nut = crate::nut()?;
+    let blank = crate::blank()?;
+    let nut;
     let view = View::on_canvas(worker.canvas(), &ViewOptions::default()).await?;
+
+    let waiting = view.show_solid(&blank, 0.05, None)?;
+    let note = Text::overlay("cutting the thread…").size(16.0).colour("white").box_colour([0.0, 0.0, 0.0, 0.55]).padding(8.0);
+    let note = view.show_overlay_text(&note, Anchor::TopLeft, 16.0, 16.0, 0)?;
+    view.frame()?;
+    view.draw()?;
+    worker.post(&JsValue::from_str("cutting the thread…"))?;
+    let_the_browser_draw().await?;
+
+    nut = crate::threaded(&blank)?;
+    waiting.remove()?;
+    note.remove()?;
     let shown = crate::present(&view, &nut)?;
     let figures = js_sys::Object::new();
     js_sys::Reflect::set(&figures, &"summary".into(), &shown.summary.as_str().into())?;
@@ -387,6 +407,11 @@ pub async fn worker_main() -> Result<(), JsValue> {
 }
 ```
 
+- **The blank first.** The thread takes a few seconds to cut, and the worker can't draw while
+  it is busy. So it draws the blank, posts the page a line of text for its status, and
+  `let_the_browser_draw` hands control back to the browser for 50 ms (a `setTimeout` on the
+  worker), long enough for the frame to reach the screen. `nut` is declared before the view
+  and set later because the view borrows every solid it shows, so each has to outlive it.
 - **The answer** to `"figures?"` is an object: the summary and `blacksmith::build()`, the
   cadaclysm libraries the worker runs on as the kernel gives them (JSON text). The page
   formats it.
@@ -398,7 +423,8 @@ pub async fn worker_main() -> Result<(), JsValue> {
   open. The canvas orbits, zooms and pinches by itself.
 
 **The page**, [`web/index.html`](web/index.html), is a canvas, a status line and a few
-lines of script. `show` writes the worker's answer in the status line, the cadaclysm build
+lines of script. `show` writes the worker's answers in the status line: its progress
+while the thread is cut, then the nut's summary and the cadaclysm build
 as its version, branch, commit and build time, as the
 [forge](https://cadaclysm.blitter.studio/forge/) shows it:
 
@@ -408,7 +434,9 @@ as its version, branch, commit and build time, as the
 <script type="module">
 import init, { page_main } from "./app/nut.js";
 const status = document.getElementById("status");
-const show = ({ summary, build }) => {
+const show = (answer) => {
+    if (typeof answer === "string") { status.textContent = answer; return; }
+    const { summary, build } = answer;
     const b = JSON.parse(build);
     status.textContent = `${summary} — cadaclysm ${b.version} · ${b.branch} ${b.commit} · ${b.time.replace("T", " ").replace(/Z$/, " UTC")}`;
 };

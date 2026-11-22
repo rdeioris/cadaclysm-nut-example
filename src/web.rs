@@ -2,13 +2,13 @@
 //! cadaclysm web package, builds the nut and draws it there, so the page never freezes
 //! while the kernel works.
 
-use cadaclysm_sdk::view::{View, ViewOptions};
+use cadaclysm_sdk::view::{Anchor, Text, View, ViewOptions};
 use cadaclysm_sdk::web::page::{self, App};
 use cadaclysm_sdk::web::{worker, LoadOptions};
 use wasm_bindgen::prelude::*;
 
 /// Runs on the page (index.html calls it): start the worker, ask it about the nut and hand its
-/// answer to `show`.
+/// answers to `show`.
 #[wasm_bindgen]
 pub fn page_main(show: js_sys::Function) -> Result<(), JsValue> {
     let document = web_sys::window().and_then(|w| w.document()).expect("a page");
@@ -27,12 +27,30 @@ pub fn page_main(show: js_sys::Function) -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Runs in the worker: load the package, draw the nut on the canvas, answer the page.
+/// Runs in the worker: load the package, draw the blank nut at once, cut its thread, then
+/// draw the nut and answer the page.
 #[wasm_bindgen]
 pub async fn worker_main() -> Result<(), JsValue> {
     let worker = worker::start(LoadOptions::new("./pkg/index.js")).await?;
-    let nut = crate::nut()?;
+    let blank = crate::blank()?;
+    // Cut below, once the blank is on the canvas; declared here so it outlives the view.
+    let nut;
     let view = View::on_canvas(worker.canvas(), &ViewOptions::default()).await?;
+
+    // The blank first: it takes a moment to build, the thread several seconds to cut. It is
+    // drawn now and the worker lets the browser show the frame before the cut starts, which
+    // keeps the worker busy until it is done.
+    let waiting = view.show_solid(&blank, 0.05, None)?;
+    let note = Text::overlay("cutting the thread…").size(16.0).colour("white").box_colour([0.0, 0.0, 0.0, 0.55]).padding(8.0);
+    let note = view.show_overlay_text(&note, Anchor::TopLeft, 16.0, 16.0, 0)?;
+    view.frame()?;
+    view.draw()?;
+    worker.post(&JsValue::from_str("cutting the thread…"))?;
+    let_the_browser_draw().await?;
+
+    nut = crate::threaded(&blank)?;
+    waiting.remove()?;
+    note.remove()?;
     let shown = crate::present(&view, &nut)?;
     // The answer to "figures?": the summary, and the cadaclysm build as the kernel gives it
     // (JSON text), for the page to show.
@@ -52,5 +70,16 @@ pub async fn worker_main() -> Result<(), JsValue> {
     let turntable = crate::Turntable::new(&view, &shown.item, [0.0, 0.0, 23.0])?;
     let mut nut = crate::Nut { turntable, selection: crate::Selection::new(&view, &nut, &shown.item) };
     view.run_with(|e| nut.on_event(e)).await?;
+    Ok(())
+}
+
+/// Hands the worker back to the browser for a moment, so the frame just drawn reaches the
+/// screen and the page's status line its message before the worker is busy again.
+async fn let_the_browser_draw() -> Result<(), JsValue> {
+    let promise = js_sys::Promise::new(&mut |resolve, _| {
+        let scope: web_sys::WorkerGlobalScope = js_sys::global().unchecked_into();
+        let _ = scope.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 50);
+    });
+    wasm_bindgen_futures::JsFuture::from(promise).await?;
     Ok(())
 }
