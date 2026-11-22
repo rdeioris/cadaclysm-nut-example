@@ -273,8 +273,13 @@ pivot is the nut's centre: it is centred on the Z axis and stands 46 mm tall.
 - **`EventKind::Timeline`** is the event the view sends at each tick of the timeline. The
   turntable updates the readout, the bar and the button on it, and a click on an overlay
   that is one of its controls is its click too.
-- **`Nut`** holds the turntable and the selection, and hands each event to the turntable
-  first: what it doesn't take, the selection gets.
+- **The frame rate** sits in the bottom-right corner, read with `view.stats()`. That counts
+  the frames the view really drew; dividing the count by the time between two events half
+  a second apart, on the events' own clock (`time_ms`), gives frames a second. While the nut
+  turns, every frame brings a timeline event, so the counter keeps up. Paused and left
+  alone, the view draws nothing and the counter keeps its last reading.
+- **`Nut`** holds the frame counter, the turntable and the selection. The counter sees every
+  event; then the turntable gets it, and what the turntable doesn't take, the selection gets.
 
 ## Step 4: show it on the desktop
 
@@ -295,10 +300,11 @@ fn main() -> cadaclysm_sdk::Result<()> {
     let view = View::new(&ViewOptions { title: Some("cadaclysm nut".into()), ..ViewOptions::default() })?;
     let shown = nut::present(&view, &nut)?;
     println!("{}", shown.summary);
-    // The nut turns on a turntable, with its controls along the bottom. Every tick and click of
-    // the window goes to the turntable first, then to the selection; returns when the window is closed.
+    // The nut turns on a turntable, with its controls along the bottom and the frame rate in the
+    // bottom-right corner. Every tick and click of the window goes to the frame counter, then the
+    // turntable, then the selection; returns when the window is closed.
     let turntable = nut::Turntable::new(&view, &shown.item, [0.0, 0.0, 23.0])?;
-    let mut nut = nut::Nut { turntable, selection: nut::Selection::new(&view, &nut, &shown.item) };
+    let mut nut = nut::Nut { fps: nut::Fps::new(&view)?, turntable, selection: nut::Selection::new(&view, &nut, &shown.item) };
     view.run_with(|e| nut.on_event(e))?;
     Ok(())
 }
@@ -401,7 +407,7 @@ pub async fn worker_main() -> Result<(), JsValue> {
         }
     });
     let turntable = crate::Turntable::new(&view, &shown.item, [0.0, 0.0, 23.0])?;
-    let mut nut = crate::Nut { turntable, selection: crate::Selection::new(&view, &nut, &shown.item) };
+    let mut nut = crate::Nut { fps: crate::Fps::new(&view)?, turntable, selection: crate::Selection::new(&view, &nut, &shown.item) };
     view.run_with(|e| nut.on_event(e)).await?;
     Ok(())
 }
@@ -419,7 +425,7 @@ pub async fn worker_main() -> Result<(), JsValue> {
   `View::new`: the same `View`, with the same methods.
 - **`view.run_with(...).await`** is the browser's `run_with`. It delivers the messages and
   controls that waited while the worker loaded, hands each click on the canvas and each
-  tick of the timeline to the turntable and the selection, as on the desktop, and keeps the view, and the nut, alive while the page is
+  tick of the timeline to the frame counter, the turntable and the selection, as on the desktop, and keeps the view, and the nut, alive while the page is
   open. The canvas orbits, zooms and pinches by itself.
 
 **The page**, [`web/index.html`](web/index.html), is a canvas, a status line and a few

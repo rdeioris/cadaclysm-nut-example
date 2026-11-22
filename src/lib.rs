@@ -281,15 +281,59 @@ fn readout_text(animation: &Animation, t: f64) -> cadaclysm_sdk::Result<String> 
     Ok(format!("{t:.1} / {TURN_SECONDS:.1} s  {angle:.0} deg"))
 }
 
-/// What `run_with` hands each event to: the turntable first, then the selection.
+/// How often the frame rate is read again, in milliseconds.
+const FPS_EVERY_MS: f64 = 500.0;
+
+/// The frames the view draws a second, in the window's bottom-right corner. It counts the
+/// frames the view really drew (`View::stats`) between two events at least half a second
+/// apart, timed by the events' own clock. While the nut turns, every frame brings a timeline
+/// event, so it keeps up. Paused and left alone, the view draws nothing and sends nothing,
+/// and the counter keeps its last reading until something moves again.
+pub struct Fps<'v, 'a> {
+    view: &'v View<'a>,
+    overlay: Overlay<'v>,
+    /// When the count began (the event's clock, ms) and the frames drawn by then.
+    since: Option<(f64, u64)>,
+}
+
+impl<'v, 'a> Fps<'v, 'a> {
+    pub fn new(view: &'v View<'a>) -> cadaclysm_sdk::Result<Self> {
+        let overlay = view.show_overlay_text(&control_text("-- fps"), Anchor::BottomRight, MARGIN, MARGIN, 0)?;
+        Ok(Fps { view, overlay, since: None })
+    }
+
+    /// Counts the frames up to `event` and shows the rate every half second.
+    pub fn on_event(&mut self, event: &ViewEvent) -> cadaclysm_sdk::Result<()> {
+        let frames = self.view.stats()?.frames_drawn;
+        let now = event.time_ms;
+        match self.since {
+            Some((start, counted)) if now - start >= FPS_EVERY_MS => {
+                let fps = (frames - counted) as f64 * 1000.0 / (now - start);
+                self.overlay.set_text(&format!("{fps:.0} fps"))?;
+                self.since = Some((now, frames));
+            }
+            Some(_) => {}
+            None => self.since = Some((now, frames)),
+        }
+        Ok(())
+    }
+}
+
+/// What `run_with` hands each event to: the frame counter, then the turntable, then the
+/// selection.
 pub struct Nut<'v, 'a> {
+    pub fps: Fps<'v, 'a>,
     pub turntable: Turntable<'v, 'a>,
     pub selection: Selection<'v, 'a>,
 }
 
 impl Nut<'_, '_> {
-    /// The turntable's event, else the selection's. Always keeps the view running.
+    /// The frame counter sees every event; then the turntable's event, else the selection's.
+    /// Always keeps the view running.
     pub fn on_event(&mut self, event: &ViewEvent) -> bool {
+        if let Err(e) = self.fps.on_event(event) {
+            report(&e.to_string());
+        }
         match self.turntable.on_event(event) {
             Ok(true) => true,
             Ok(false) => self.selection.on_event(event),

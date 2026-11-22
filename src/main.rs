@@ -18,10 +18,11 @@ fn main() -> cadaclysm_sdk::Result<()> {
     println!("{}", shown.summary);
     // The cadaclysm libraries it runs on: version, branch, commit and build time, as JSON.
     println!("cadaclysm {}", cadaclysm_sdk::blacksmith::build()?);
-    // The nut turns on a turntable, with its controls along the bottom. Every tick and click of
-    // the window goes to the turntable first, then to the selection; returns when the window is closed.
+    // The nut turns on a turntable, with its controls along the bottom and the frame rate in the
+    // bottom-right corner. Every tick and click of the window goes to the frame counter, then the
+    // turntable, then the selection; returns when the window is closed.
     let turntable = nut::Turntable::new(&view, &shown.item, [0.0, 0.0, 23.0])?;
-    let mut nut = nut::Nut { turntable, selection: nut::Selection::new(&view, &nut, &shown.item) };
+    let mut nut = nut::Nut { fps: nut::Fps::new(&view)?, turntable, selection: nut::Selection::new(&view, &nut, &shown.item) };
     view.run_with(|e| nut.on_event(e))?;
     Ok(())
 }
