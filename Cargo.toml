@@ -15,7 +15,7 @@ name = "desktop"
 path = "src/main.rs"
 
 [dependencies]
-cadaclysm-sdk = "0.15.0"
+cadaclysm-sdk = "0.16.0"
 
 # Only the browser build needs these.
 [target.'cfg(target_arch = "wasm32")'.dependencies]

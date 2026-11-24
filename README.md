@@ -15,17 +15,15 @@ bottom.
 built on the cadaclysm site against cadaclysm's latest code, as the
 [forge](https://cadaclysm.blitter.studio/forge/) is.
 
-> **`main` builds with the released `cadaclysm-sdk` 0.15.0**, face clicking and the turntable
-> included. The live page runs it on cadaclysm's latest code, which cuts the thread exactly
-> and much faster: there the nut has 16 faces and appears in about 20 seconds. With 0.15.0
-> the thread takes a slower route, so the nut has 112 faces and takes about two minutes to
-> appear; the faster thread comes with the next `cadaclysm-sdk` release. The
-> [`sdk-0.14.2`](https://github.com/rdeioris/cadaclysm-nut-example/tree/sdk-0.14.2) tag is
-> the same nut and figures for 0.14.2, without the clicking and the turntable.
+> **`main` builds with the released `cadaclysm-sdk` 0.16.0**, face clicking and the turntable
+> included: the thread is cut exactly, so the nut has 16 faces and is built in a few seconds.
+> The [`sdk-0.15.0`](https://github.com/rdeioris/cadaclysm-nut-example/tree/sdk-0.15.0) tag
+> builds the same program with 0.15.0, whose slower thread leaves 112 faces after about two
+> minutes; the [`sdk-0.14.2`](https://github.com/rdeioris/cadaclysm-nut-example/tree/sdk-0.14.2)
+> tag is the same nut for 0.14.2, without the clicking and the turntable.
 
 The nut is an exact B-rep solid, not a mesh: a hexagon prism intersected with a turned
-ring, with a real screw thread cut into its bore, giving 16 faces (112 with
-`cadaclysm-sdk` 0.15.0, which leaves the thread's walls in pieces). You can save it as STEP
+ring, with a real screw thread cut into its bore, giving 16 faces. You can save it as STEP
 and open it in any CAD program.
 
 This README walks through the example one step at a time. The code is short:
@@ -41,8 +39,8 @@ program and [`src/web.rs`](src/web.rs) is the browser one.
   - the wasm target: `rustup target add wasm32-unknown-unknown`
   - `wasm-bindgen-cli`, at the same version as the `wasm-bindgen` in `Cargo.lock`
     (0.2.130 here): `cargo install wasm-bindgen-cli --version 0.2.130`
-  - the cadaclysm web package, `cadaclysm-0.15.0-web.zip`, from the
-    [SDK's releases](https://github.com/rdeioris/cadaclysm-sdk/releases/tag/v0.15.0)
+  - the cadaclysm web package, `cadaclysm-0.16.0-web.zip`, from the
+    [SDK's releases](https://github.com/rdeioris/cadaclysm-sdk/releases/tag/v0.16.0)
   - any static web server. The steps below use Python's.
 
 ## Step 1: the crate
@@ -58,7 +56,7 @@ name = "desktop"
 path = "src/main.rs"
 
 [dependencies]
-cadaclysm-sdk = "0.15.0"
+cadaclysm-sdk = "0.16.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.100"
@@ -134,8 +132,8 @@ pub fn threaded(blank: &Solid) -> cadaclysm_sdk::Result<Solid> {
    the code finds it by its geometry and stops if it is not exactly one face. `Solid::thread`
    then cuts a real internal screw thread into it, a 6 mm pitch ISO profile along the whole
    bore, with the bore taken as the thread's minor diameter, at the same 0.05 mm tolerance as
-   the boolean. This is geometry, not a drawing on the surface, and it is the slow step: on
-   cadaclysm's latest code it takes a few seconds, with 0.15.0 about two minutes.
+   the boolean. This is geometry, not a drawing on the surface, and it is the slow step: it
+   takes a few seconds.
 
 Every call returns a `Result`. A bad input, such as a polygon with two sides, comes back
 as an error with the kernel's own explanation.
@@ -321,8 +319,8 @@ The first build takes a minute because it downloads the libraries. Then:
 ```text
 cadaclysm: unlicensed -- running without a production license; licenses at https://cadaclysm.blitter.studio/license
 saved nut.step
-the nut: 112 faces, 2.08 kg of steel
-cadaclysm {"branch":"v0.15.0","commit":"8c3c814f1","date":"2026-11-18","time":"2026-11-18","version":"0.15.0"}
+the nut: 16 faces, 2.08 kg of steel
+cadaclysm {"branch":"v0.16.0","commit":"b83cc9ba6","date":"2026-11-24","time":"2026-11-24","version":"0.16.0"}
 ```
 
 The window opens with the nut framed, turning, with its figures in the top-left corner and
@@ -471,7 +469,7 @@ worker runs the same wasm, and a start function would run there too.
    wasm-bindgen --target web --out-dir web/app target/wasm32-unknown-unknown/release/nut.wasm
    ```
 
-3. Unzip `cadaclysm-0.15.0-web.zip` and copy its `pkg` folder to `web/pkg`. The
+3. Unzip `cadaclysm-0.16.0-web.zip` and copy its `pkg` folder to `web/pkg`. The
    folder should now hold:
 
    ```text
@@ -531,6 +529,6 @@ and prints a notice on each open and export. A product, server or website licenc
 - In the browser, reading CAD files and healing aren't in the Rust crate yet; they work on
   the desktop.
 
-`main` builds with `cadaclysm-sdk` 0.15.0 and the 0.15.0 web package; the
+`main` builds with `cadaclysm-sdk` 0.16.0 and the 0.16.0 web package; the
 [live page](https://cadaclysm.blitter.studio/nut/) builds it against cadaclysm's latest code.
-The `sdk-0.14.2` tag uses `cadaclysm-sdk` 0.14.2 with the 0.14.2 web package.
+The `sdk-0.15.0` and `sdk-0.14.2` tags use those releases' `cadaclysm-sdk` with their web packages.
